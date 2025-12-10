@@ -10,7 +10,7 @@
 ### Installation
 
 1. Clone the repository:
-  "git clone https://github.com/LikeBog/baby-name-api.git"
-  "cd baby-name-api"
+  A. "git clone https://github.com/LikeBog/baby-name-api.git"
+  B. "cd baby-name-api"
 2. Run the console application:
-  python console_app.py
+  A. python console_app.py
