@@ -1,5 +1,6 @@
 import sqlite3
-from config import DATABASE_PATH
+import os
+from config import DATABASE_PATH, CSV_DATA_PATH
 
 class BabyNameDatabase:
     def __init__(self):
@@ -10,7 +11,7 @@ class BabyNameDatabase:
         return sqlite3.connect(self.db_path)
     
     def create_tables(self):
-        """Create the tables from schema"""
+        """Create the tables"""
         conn = self.connect()
         cursor = conn.cursor()
         
@@ -24,28 +25,76 @@ class BabyNameDatabase:
                 UNIQUE(name, year, gender)
             )
         ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_name ON baby_names(name)
+        ''')
+        
         conn.commit()
         conn.close()
     
-    def load_data_from_csv(self, csv_file):
-        """Load all data from SSA CSV file"""
+    def load_data_from_csv(self):
+        """Load all data from SSA CSV files in babynames folder"""
         conn = self.connect()
         cursor = conn.cursor()
         
-        with open(csv_file, 'r') as f:
-            next(f)  # Skip header
-            for line in f:
-                name, year, gender, count = line.strip().split(',')
-                try:
-                    cursor.execute('''
-                        INSERT INTO baby_names (name, year, gender, count)
-                        VALUES (?, ?, ?, ?)
-                    ''', (name, int(year), gender, int(count)))
-                except sqlite3.IntegrityError:
-                    pass  # Skip duplicates
+        # Get all CSV files in babynames folder
+        babynames_dir = CSV_DATA_PATH
+        
+        if not os.path.exists(babynames_dir):
+            print(f"Error: {babynames_dir} folder not found")
+            return False
+        
+        csv_files = [f for f in os.listdir(babynames_dir) if f.endswith('.csv')]
+        
+        if not csv_files:
+            print(f"Error: No CSV files found in {babynames_dir}")
+            return False
+        
+        loaded_count = 0
+        
+        for csv_file in csv_files:
+            file_path = os.path.join(babynames_dir, csv_file)
+            print(f"Loading {csv_file}...")
+            
+            try:
+                with open(file_path, 'r') as f:
+                    # Skip header
+                    header = f.readline()
+                    
+                    for line in f:
+                        parts = line.strip().split(',')
+                        
+                        if len(parts) < 4:
+                            continue
+                        
+                        name = parts[0].strip()
+                        year = parts[1].strip()
+                        gender = parts[2].strip()
+                        count = parts[3].strip()
+                        
+                        try:
+                            year = int(year)
+                            count = int(count)
+                            
+                            cursor.execute('''
+                                INSERT INTO baby_names (name, year, gender, count)
+                                VALUES (?, ?, ?, ?)
+                            ''', (name, year, gender, count))
+                            
+                            loaded_count += 1
+                        except (ValueError, sqlite3.IntegrityError):
+                            pass
+            
+            except Exception as e:
+                print(f"Error loading {csv_file}: {e}")
+                continue
         
         conn.commit()
         conn.close()
+        
+        print(f"Successfully loaded {loaded_count} records!")
+        return True
     
     def get_name_stats(self, name):
         """Get stats for a specific name"""
@@ -54,7 +103,7 @@ class BabyNameDatabase:
         
         # Get all records for this name
         cursor.execute('''
-            SELECT year, COUNT(count) as total_count
+            SELECT year, SUM(count) as total_count
             FROM baby_names
             WHERE LOWER(name) = LOWER(?)
             GROUP BY year
